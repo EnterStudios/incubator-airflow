@@ -49,7 +49,6 @@ from airflow.operators.http_operator import SimpleHttpOperator
 from airflow.operators import sensors
 from airflow.hooks.base_hook import BaseHook
 from airflow.hooks.sqlite_hook import SqliteHook
-from airflow.hooks.postgres_hook import PostgresHook
 from airflow.bin import cli
 from airflow.www import app as application
 from airflow.settings import Session
@@ -2058,6 +2057,26 @@ class WebHDFSHookTest(unittest.TestCase):
         from airflow.hooks.webhdfs_hook import WebHDFSHook
         c = WebHDFSHook(proxy_user='someone')
         self.assertEqual('someone', c.proxy_user)
+
+try:
+    from airflow.hooks.postgres_hook import PostgresHook
+except ImportError:
+    PostgresHook = None
+
+
+@unittest.skipIf(PostgresHook is None,
+                 "Skipping test because PostgresHook is not installed")
+class PostgresHookTest(unittest.TestCase):
+    def setUp(self):
+        configuration.load_test_config()
+        utils.db.initdb()
+
+    @mock.patch('airflow.hooks.postgres_hook.psycopg2.connect')
+    def test_get_conn(self, mock_connect):
+        PostgresHook().get_conn()
+        mock_connect.assert_called_once_with(host='localhost', user='postgres',
+                                             password=None, dbname='airflow',
+                                             port=None)
 
 
 try:
