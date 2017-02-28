@@ -1145,6 +1145,7 @@ class TaskInstance(Base):
                                       dep_status.reason))
 
                 if not dep_status.passed:
+                    import pdb; pdb.set_trace() #XXX
                     yield dep_status
 
     def __repr__(self):

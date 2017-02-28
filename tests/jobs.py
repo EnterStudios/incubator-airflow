@@ -38,6 +38,7 @@ from airflow.utils.timeout import timeout
 from airflow.utils.dag_processing import SimpleDagBag
 from mock import patch
 from tests.executors.test_executor import TestExecutor
+from tests.core import TEST_DAG_FOLDER
 
 from airflow import configuration
 configuration.load_test_config()
@@ -253,7 +254,7 @@ class SchedulerJobTest(unittest.TestCase):
                               "processor_poll_interval": 0.5}
 
     def setUp(self):
-        self.dagbag = DagBag()
+        self.dagbag = DagBag(dag_folder=TEST_DAG_FOLDER)
         session = settings.Session()
         session.query(models.ImportError).delete()
         session.commit()
@@ -391,6 +392,46 @@ class SchedulerJobTest(unittest.TestCase):
             },
             dagrun_state=State.SUCCESS,
             run_kwargs=dict(ignore_first_depends_on_past=True))
+
+    def test_dagrun_no_deadlock_upstream_skipped(self):
+        """
+        """
+        dag_id = 'test_dagrun_no_deadlock_upstream_skipped'
+        expected_task_states = {
+            'test_short_circuit_false': State.SUCCESS,
+            'test_state_skipped1': State.SKIPPED,
+            'test_state_skipped2': State.NONE,
+            'test_state_skipped3': State.NONE,
+        }
+        dagrun_state = State.RUNNING
+
+        scheduler = SchedulerJob(**self.default_scheduler_args)
+        dag = self.dagbag.get_dag(dag_id)
+        dag.clear()
+        dr = scheduler.create_dag_run(dag)
+        ex_date = dr.execution_date
+
+        session = settings.Session()
+        # test tasks
+        for task_id, expected_state in expected_task_states.items():
+            task = dag.get_task(task_id)
+            ti = TI(task, ex_date)
+            ti.refresh_from_db()
+            ti.set_state(expected_state, session)
+
+        for task_id, expected_state in expected_task_states.items():
+            task = dag.get_task(task_id)
+            ti = TI(task, ex_date)
+            ti.refresh_from_db()
+            self.assertEqual(ti.state, expected_state)
+
+        dr.update_state(session=session)
+        # load dagrun
+        dr = DagRun.find(dag_id=dag_id, execution_date=ex_date)
+        dr = dr[0]
+        dr.dag = dag
+
+        self.assertEqual(dr.state, dagrun_state)
 
     def test_scheduler_start_date(self):
         """

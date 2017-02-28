@@ -15,6 +15,8 @@
 from datetime import datetime
 
 from airflow.models import DAG
+from airflow.operators.python_operator import ShortCircuitOperator
+from airflow.operators.latest_only_operator import LatestOnlyOperator
 from airflow.operators.dummy_operator import DummyOperator
 DEFAULT_DATE = datetime(2100, 1, 1)
 
@@ -27,3 +29,27 @@ dag1_task1 = DummyOperator(
     task_id='dummy',
     dag=dag1,
     owner='airflow')
+
+# DAG tests that a Dag run that is NOT deadlocked when upstream task is SKIPPED
+dag8 = DAG(dag_id='test_dagrun_no_deadlock_upstream_skipped',
+           start_date=datetime(2017, 1, 1), schedule_interval='@hourly',
+           catchup=False)
+# dag8_task1 = LatestOnlyOperator(
+#     task_id='test_short_circuit_false',
+#     dag=dag8)
+dag8_task1 = ShortCircuitOperator(
+    task_id='test_short_circuit_false',
+    dag=dag8,
+    python_callable=lambda: False)
+dag8_task2 = DummyOperator(
+    task_id='test_state_skipped1',
+    dag=dag8,)
+dag8_task3 = DummyOperator(
+    task_id='test_state_skipped2',
+    dag=dag8,)
+dag8_task4 = DummyOperator(
+    task_id='test_state_skipped3',
+    dag=dag8,)
+dag8_task1.set_downstream(dag8_task2)
+dag8_task2.set_downstream(dag8_task3)
+dag8_task3.set_downstream(dag8_task4)
